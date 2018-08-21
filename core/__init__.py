@@ -2,6 +2,7 @@
 
 from __future__ import print_function
 
+import itertools
 import locale
 import os
 import re
@@ -50,7 +51,7 @@ from core.databases import mainDB
 
 # Client Agents
 NZB_CLIENTS = ['sabnzbd', 'nzbget', 'manual']
-TORRENT_CLIENTS = ['transmission', 'deluge', 'utorrent', 'rtorrent', 'other', 'manual']
+TORRENT_CLIENTS = ['transmission', 'deluge', 'utorrent', 'rtorrent', 'qbittorrent', 'other', 'manual']
 
 # sabnzbd constants
 SABNZB_NO_OF_ARGUMENTS = 8
@@ -61,19 +62,20 @@ FORKS = {}
 FORK_DEFAULT = "default"
 FORK_FAILED = "failed"
 FORK_FAILED_TORRENT = "failed-torrent"
-FORK_SICKRAGETV = "sickragetv"
-FORK_SICKRAGE = "sickrage"
-FORK_MEDUSA = "medusa"
-FORK_SICKGEAR = "sickgear"
+FORK_SICKRAGETV = "SickRageTV"
+FORK_SICKRAGE = "SickRage"
+FORK_SICKRAGE_API = "SiCKRAGE-api"
+FORK_MEDUSA = "Medusa"
+FORK_SICKGEAR = "SickGear"
 FORKS[FORK_DEFAULT] = {"dir": None}
 FORKS[FORK_FAILED] = {"dirName": None, "failed": None}
 FORKS[FORK_FAILED_TORRENT] = {"dir": None, "failed": None, "process_method": None}
 FORKS[FORK_SICKRAGETV] = {"proc_dir": None, "failed": None, "process_method": None, "force": None, "delete_on": None}
 FORKS[FORK_SICKRAGE] = {"proc_dir": None, "failed": None, "process_method": None, "force": None, "delete_on": None, "force_next": None}
+FORKS[FORK_SICKRAGE_API] = {"path": None, "failed": None, "process_method": None, "force_replace": None, "return_data": None, "type": None, "delete": None, "force_next": None}
 FORKS[FORK_MEDUSA] = {"proc_dir": None, "failed": None, "process_method": None, "force": None, "delete_on": None, "ignore_subs":None}
 FORKS[FORK_SICKGEAR] = {"dir": None, "failed": None, "process_method": None, "force": None}
-ALL_FORKS = {"dir": None, "dirName": None, "proc_dir": None, "process_directory": None, "failed": None, "process_method": None, "force": None,
-             "delete_on": None, "ignore_subs": None, "force_next": None}
+ALL_FORKS = {k:None for k in set(list(itertools.chain.from_iterable([FORKS[x].keys() for x in FORKS.keys()])))}
 
 # NZBGet Exit Codes
 NZBGET_POSTPROCESS_PARCHECK = 92
@@ -135,6 +137,11 @@ DELUGEPORT = None
 DELUGEUSR = None
 DELUGEPWD = None
 
+QBITTORRENTHOST = None
+QBITTORRENTPORT = None
+QBITTORRENTUSR = None
+QBITTORRENTPWD = None
+
 PLEXSSL = None
 PLEXHOST = None
 PLEXPORT = None
@@ -195,6 +202,7 @@ OUTPUTFASTSTART = None
 OUTPUTQUALITYPERCENT = None
 FFMPEG = None
 SEVENZIP = None
+PAR2CMD = None
 FFPROBE = None
 CHECK_MEDIA = None
 NICENESS = []
@@ -233,7 +241,7 @@ def initialize(section=None):
         DELETE_ORIGINAL, TORRENT_CHMOD_DIRECTORY, PASSWORDSFILE, USER_DELAY, USER_SCRIPT, USER_SCRIPT_CLEAN, USER_SCRIPT_MEDIAEXTENSIONS, \
         USER_SCRIPT_PARAM, USER_SCRIPT_RUNONCE, USER_SCRIPT_SUCCESSCODES, DOWNLOADINFO, CHECK_MEDIA, SAFE_MODE, \
         TORRENT_DEFAULTDIR, TORRENT_RESUME_ON_FAILURE, NZB_DEFAULTDIR, REMOTEPATHS, LOG_ENV, PID_FILE, MYAPP, ACHANNELS, ACHANNELS2, ACHANNELS3, \
-        PLEXSSL, PLEXHOST, PLEXPORT, PLEXTOKEN, PLEXSEC, TORRENT_RESUME
+        PLEXSSL, PLEXHOST, PLEXPORT, PLEXTOKEN, PLEXSEC, TORRENT_RESUME, PAR2CMD, QBITTORRENTHOST, QBITTORRENTPORT, QBITTORRENTUSR, QBITTORRENTPWD
 
     if __INITIALIZED__:
         return False
@@ -309,7 +317,7 @@ def initialize(section=None):
     nzbToMediaDB.upgradeDatabase(nzbToMediaDB.DBConnection(), mainDB.InitialSchema)
 
     # Set Version and GIT variables
-    NZBTOMEDIA_VERSION = '11.03'
+    NZBTOMEDIA_VERSION = '11.05'
     VERSION_NOTIFY = int(CFG['General']['version_notify'])
     AUTO_UPDATE = int(CFG['General']['auto_update'])
     GIT_REPO = 'nzbToMedia'
@@ -356,7 +364,7 @@ def initialize(section=None):
     if GROUPS == ['']:
         GROUPS = None
 
-    TORRENT_CLIENTAGENT = CFG["Torrent"]["clientAgent"]  # utorrent | deluge | transmission | rtorrent | vuze |other
+    TORRENT_CLIENTAGENT = CFG["Torrent"]["clientAgent"]  # utorrent | deluge | transmission | rtorrent | vuze | qbittorrent |other
     USELINK = CFG["Torrent"]["useLink"]  # no | hard | sym
     OUTPUTDIRECTORY = CFG["Torrent"]["outputDirectory"]  # /abs/path/to/complete/
     TORRENT_DEFAULTDIR = CFG["Torrent"]["default_downloadDirectory"]
@@ -383,6 +391,11 @@ def initialize(section=None):
     DELUGEPORT = int(CFG["Torrent"]["DelugePort"])  # 8084
     DELUGEUSR = CFG["Torrent"]["DelugeUSR"]  # mysecretusr
     DELUGEPWD = CFG["Torrent"]["DelugePWD"]  # mysecretpwr
+
+    QBITTORRENTHOST =  CFG["Torrent"]["qBittorrenHost"]  # localhost
+    QBITTORRENTPORT = int(CFG["Torrent"]["qBittorrentPort"])  # 8080
+    QBITTORRENTUSR = CFG["Torrent"]["qBittorrentUSR"]  # mysecretusr
+    QBITTORRENTPWD = CFG["Torrent"]["qBittorrentPWD"]  # mysecretpwr
 
     REMOTEPATHS = CFG["Network"]["mount_points"] or []
     if REMOTEPATHS:
@@ -760,7 +773,15 @@ def initialize(section=None):
         if not SEVENZIP:
             SEVENZIP = None
             logger.warning(
-                "Failed to locate 7zip. Transcosing of disk images and extraction of .7z files will not be possible!")
+                "Failed to locate 7zip. Transcoding of disk images and extraction of .7z files will not be possible!")
+        try:
+            PAR2CMD = subprocess.Popen(['which', 'par2'], stdout=subprocess.PIPE).communicate()[0].strip()
+        except:
+            pass
+        if not PAR2CMD:
+            PAR2CMD = None
+            logger.warning(
+                "Failed to locate par2. Repair and rename using par files will not be possible!")
         if os.path.isfile(os.path.join(FFMPEG_PATH, 'ffmpeg')) or os.access(os.path.join(FFMPEG_PATH, 'ffmpeg'),
                                                                             os.X_OK):
             FFMPEG = os.path.join(FFMPEG_PATH, 'ffmpeg')

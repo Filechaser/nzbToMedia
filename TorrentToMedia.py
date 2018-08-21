@@ -95,6 +95,7 @@ def processTorrent(inputDirectory, inputName, inputCategory, inputHash, inputID,
     Torrent_NoLink = int(section.get("Torrent_NoLink", 0))
     keep_archive = int(section.get("keep_archive", 0))
     extract = int(section.get('extract', 0))
+    extensions = section.get('user_script_mediaExtensions', "").lower().split(',')
     uniquePath = int(section.get("unique_path", 1))
 
     if clientAgent != 'manual':
@@ -109,7 +110,7 @@ def processTorrent(inputDirectory, inputName, inputCategory, inputHash, inputID,
         outputDestination = os.path.join(core.OUTPUTDIRECTORY, inputCategory, basename)
     elif uniquePath:
         outputDestination = os.path.normpath(
-            core.os.path.join(core.OUTPUTDIRECTORY, inputCategory, core.sanitizeName(inputName)))
+            core.os.path.join(core.OUTPUTDIRECTORY, inputCategory, core.sanitizeName(inputName).replace(" ",".")))
     else:
         outputDestination = os.path.normpath(
             core.os.path.join(core.OUTPUTDIRECTORY, inputCategory))
@@ -131,17 +132,21 @@ def processTorrent(inputDirectory, inputName, inputCategory, inputHash, inputID,
 
     logger.debug("Scanning files in directory: {0}".format(inputDirectory))
 
-    if sectionName == 'HeadPhones':
+    if sectionName in ['HeadPhones', 'Lidarr']:
         core.NOFLATTEN.extend(
             inputCategory)  # Make sure we preserve folder structure for HeadPhones.
 
     now = datetime.datetime.now()
 
     if extract == 1:
-        inputFiles = core.listMediaFiles(inputDirectory, archives=False)
+        inputFiles = core.listMediaFiles(inputDirectory, archives=False, other=True, otherext=extensions)
     else:
-        inputFiles = core.listMediaFiles(inputDirectory)
-    logger.debug("Found {0} files in {1}".format(len(inputFiles), inputDirectory))
+        inputFiles = core.listMediaFiles(inputDirectory, other=True, otherext=extensions)
+    if len(inputFiles) == 0 and os.path.isfile(inputDirectory):
+        inputFiles = [inputDirectory]
+        logger.debug("Found 1 file to process: {0}".format(inputDirectory))
+    else:
+        logger.debug("Found {0} files in {1}".format(len(inputFiles), inputDirectory))
     for inputFile in inputFiles:
         filePath = os.path.dirname(inputFile)
         fileName, fileExt = os.path.splitext(os.path.basename(inputFile))
@@ -200,7 +205,7 @@ def processTorrent(inputDirectory, inputName, inputCategory, inputHash, inputID,
         core.flatten(outputDestination)
 
     # Now check if video files exist in destination:
-    if sectionName in ["SickBeard", "NzbDrone", "CouchPotato"]:
+    if sectionName in ["SickBeard", "NzbDrone", "Sonarr", "CouchPotato", "Radarr"]:
         numVideos = len(
             core.listMediaFiles(outputDestination, media=True, audio=False, meta=False, archives=False))
         if numVideos > 0:
@@ -214,7 +219,7 @@ def processTorrent(inputDirectory, inputName, inputCategory, inputHash, inputID,
 
     # Only these sections can handling failed downloads
     # so make sure everything else gets through without the check for failed
-    if sectionName not in ['CouchPotato', 'SickBeard', 'NzbDrone']:
+    if sectionName not in ['CouchPotato', 'Radarr', 'SickBeard', 'NzbDrone', 'Sonarr']:
         status = 0
 
     logger.info("Calling {0}:{1} to post-process:{2}".format(sectionName, usercat, inputName))
@@ -226,15 +231,15 @@ def processTorrent(inputDirectory, inputName, inputCategory, inputHash, inputID,
     if sectionName == 'UserScript':
         result = external_script(outputDestination, inputName, inputCategory, section)
 
-    elif sectionName == 'CouchPotato':
+    elif sectionName in ['CouchPotato', 'Radarr']:
         result = core.autoProcessMovie().process(sectionName, outputDestination, inputName,
                                                  status, clientAgent, inputHash, inputCategory)
-    elif sectionName in ['SickBeard', 'NzbDrone']:
+    elif sectionName in ['SickBeard', 'NzbDrone', 'Sonarr']:
         if inputHash:
             inputHash = inputHash.upper()
         result = core.autoProcessTV().processEpisode(sectionName, outputDestination, inputName,
                                                      status, clientAgent, inputHash, inputCategory)
-    elif sectionName == 'HeadPhones':
+    elif sectionName in ['HeadPhones', 'Lidarr']:
         result = core.autoProcessMusic().process(sectionName, outputDestination, inputName,
                                                  status, clientAgent, inputCategory)
     elif sectionName == 'Mylar':

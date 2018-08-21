@@ -60,17 +60,20 @@ class autoProcessTV(object):
         ssl = int(cfg.get("ssl", 0))
         web_root = cfg.get("web_root", "")
         protocol = "https://" if ssl else "http://"
-
-        if not server_responding("{0}{1}:{2}{3}".format(protocol, host, port, web_root)):
-            logger.error("Server did not respond. Exiting", section)
-            return [1, "{0}: Failed to post-process - {1} did not respond.".format(section, section)]
-
-        # auto-detect correct fork
-        fork, fork_params = autoFork(section, inputCategory)
-
         username = cfg.get("username", "")
         password = cfg.get("password", "")
         apikey = cfg.get("apikey", "")
+
+        if server_responding("{0}{1}:{2}{3}".format(protocol, host, port, web_root)):
+            # auto-detect correct fork
+            fork, fork_params = autoFork(section, inputCategory)
+        elif not username and not apikey:
+            logger.info('No SickBeard username or Sonarr apikey entered. Performing transcoder functions only')
+            fork, fork_params = "None", {}
+        else:
+            logger.error("Server did not respond. Exiting", section)
+            return [1, "{0}: Failed to post-process - {1} did not respond.".format(section, section)]
+
         delete_failed = int(cfg.get("delete_failed", 0))
         nzbExtractionBy = cfg.get("nzbExtractionBy", "Downloader")
         process_method = cfg.get("process_method")
@@ -186,8 +189,19 @@ class autoProcessTV(object):
             if param == "failed":
                 fork_params[param] = failed
                 del fork_params['proc_type']
+                if "type" in fork_params:
+                    del fork_params['type']
 
-            if param in ["dirName", "dir", "proc_dir", "process_directory"]:
+            if param == "return_data":
+                fork_params[param] = 0
+                del fork_params['quiet']
+
+            if param == "type":
+                fork_params[param] = 'manual'
+                if "proc_type" in fork_params:
+                    del fork_params['proc_type']
+
+            if param in ["dirName", "dir", "proc_dir", "process_directory", "path"]:
                 fork_params[param] = dirName
                 if remote_path:
                     fork_params[param] = remoteDir(dirName)
@@ -198,13 +212,13 @@ class autoProcessTV(object):
                 else:
                     del fork_params[param]
 
-            if param == "force":
+            if param in ["force", "force_replace"]:
                 if force:
                     fork_params[param] = force
                 else:
                     del fork_params[param]
 
-            if param == "delete_on":
+            if param in ["delete_on", "delete"]:
                 if delete_on:
                     fork_params[param] = delete_on
                 else:
@@ -223,6 +237,9 @@ class autoProcessTV(object):
         [fork_params.pop(k) for k, v in fork_params.items() if v is None]
 
         if status == 0:
+            if section == "NzbDrone" and not apikey:
+                logger.info('No Sonarr apikey entered. Processing completed.')
+                return [0, "{0}: Successfully post-processed {1}".format(section, inputName)]
             logger.postprocess("SUCCESS: The download succeeded, sending a post-process request", section)
         else:
             core.FAILED = True
@@ -242,7 +259,10 @@ class autoProcessTV(object):
 
         url = None
         if section == "SickBeard":
-            url = "{0}{1}:{2}{3}/home/postprocess/processEpisode".format(protocol, host, port, web_root)
+            if apikey:
+                url = "{0}{1}:{2}{3}/api/{4}/?cmd=postprocess".format(protocol, host, port, web_root, apikey)
+            else:
+                url = "{0}{1}:{2}{3}/home/postprocess/processEpisode".format(protocol, host, port, web_root)
         elif section == "NzbDrone":
             url = "{0}{1}:{2}{3}/api/command".format(protocol, host, port, web_root)
             url2 = "{0}{1}:{2}{3}/api/config/downloadClient".format(protocol, host, port, web_root)
@@ -250,10 +270,10 @@ class autoProcessTV(object):
             # params = {'sortKey': 'series.title', 'page': 1, 'pageSize': 1, 'sortDir': 'asc'}
             if remote_path:
                 logger.debug("remote_path: {0}".format(remoteDir(dirName)), section)
-                data = {"name": "DownloadedEpisodesScan", "path": remoteDir(dirName), "downloadClientId": download_id}
+                data = {"name": "DownloadedEpisodesScan", "path": remoteDir(dirName), "downloadClientId": download_id, "importMode": "Move"}
             else:
                 logger.debug("path: {0}".format(dirName), section)
-                data = {"name": "DownloadedEpisodesScan", "path": dirName, "downloadClientId": download_id}
+                data = {"name": "DownloadedEpisodesScan", "path": dirName, "downloadClientId": download_id, "importMode": "Move"}
             if not download_id:
                 data.pop("downloadClientId")
             data = json.dumps(data)
@@ -262,9 +282,13 @@ class autoProcessTV(object):
             if section == "SickBeard":
                 logger.debug("Opening URL: {0} with params: {1}".format(url, fork_params), section)
                 s = requests.Session()
-                login = "{0}{1}:{2}{3}/login".format(protocol, host, port, web_root)
-                login_params = {'username': username, 'password': password}
-                s.post(login, data=login_params, stream=True, verify=False, timeout=(30, 60))
+                if not apikey and username and password:
+                    login = "{0}{1}:{2}{3}/login".format(protocol, host, port, web_root)
+                    login_params = {'username': username, 'password': password}
+                    r = s.get(login, verify=False, timeout=(30,60))
+                    if r.status_code == 401 and r.cookies.get('_xsrf'):
+                        login_params['_xsrf'] = r.cookies.get('_xsrf')
+                    s.post(login, data=login_params, stream=True, verify=False, timeout=(30, 60))
                 r = s.get(url, auth=(username, password), params=fork_params, stream=True, verify=False, timeout=(30, 1800))
             elif section == "NzbDrone":
                 logger.debug("Opening URL: {0} with data: {1}".format(url, data), section)
@@ -281,15 +305,20 @@ class autoProcessTV(object):
         Queued = False
         Started = False
         if section == "SickBeard":
-            for line in r.iter_lines():
-                if line:
-                    logger.postprocess("{0}".format(line), section)
-                    if "Moving file from" in line:
-                        inputName = os.path.split(line)[1]
-                    if "added to the queue" in line:
-                        Queued = True
-                    if "Processing succeeded" in line or "Successfully processed" in line:
-                        Success = True
+            if apikey:
+                if r.json()['result'] == 'success':
+                    Success = True
+            else:
+                for line in r.iter_lines():
+                    if line:
+                        logger.postprocess("{0}".format(line), section)
+                        if "Moving file from" in line:
+                            inputName = os.path.split(line)[1]
+                        if "added to the queue" in line:
+                            Queued = True
+                        if "Processing succeeded" in line or "Successfully processed" in line:
+                            Success = True
+
             if Queued:
                 time.sleep(60)
         elif section == "NzbDrone":

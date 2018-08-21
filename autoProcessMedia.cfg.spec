@@ -51,6 +51,8 @@
         ###### ADVANCED USE - ONLY EDIT IF YOU KNOW WHAT YOU'RE DOING ######
         ssl = 0
         web_root =
+        # api key for www.omdbapi.com (used as alternative to imdb)
+        omdbapikey =
         # Enable/Disable linking for Torrents
         Torrent_NoLink = 0
         keep_archive = 1
@@ -69,6 +71,35 @@
         ##### Set the recursive directory permissions to the following (0 to disable)
         chmodDirectory = 0
 
+[Radarr]
+    #### autoProcessing for Movies
+    #### raCategory - category that gets called for post-processing with Radarr
+    [[movie]]
+        enabled = 0
+        apikey =
+        host = localhost
+        port = 7878
+        ###### ADVANCED USE - ONLY EDIT IF YOU KNOW WHAT YOU'RE DOING ######
+        web_root =
+        ssl = 0
+        # api key for www.omdbapi.com (used as alternative to imdb)
+        omdbapikey =
+        delete_failed = 0
+        # Enable/Disable linking for Torrents
+        Torrent_NoLink = 0
+        keep_archive = 1
+        extract = 1
+        nzbExtractionBy = Downloader
+        wait_for = 6
+        # Set this to minimum required size to consider a media file valid (in MB)
+        minSize = 0
+        # Enable/Disable deleting ignored files (samples and invalid media files)
+        delete_ignored = 0
+        ##### Enable if NzbDrone is on a remote server for this category
+        remote_path = 0
+        ##### Set to path where download client places completed downloads locally for this category
+        watch_dir =
+
 [SickBeard]
     #### autoProcessing for TV Series
     #### tv - category that gets called for post-processing with SB
@@ -76,6 +107,7 @@
         enabled = 0
         host = localhost
         port = 8081
+        apikey =
         username =
         password =
         ###### ADVANCED USE - ONLY EDIT IF YOU KNOW WHAT YOU'RE DOING ######
@@ -107,8 +139,9 @@
         chmodDirectory = 0
 
 [NzbDrone]
+    #### Formerly known as NzbDrone this is now Sonarr
     #### autoProcessing for TV Series
-    #### ndCategory - category that gets called for post-processing with NzbDrone
+    #### ndCategory - category that gets called for post-processing with NzbDrone/Sonarr
     [[tv]]
         enabled = 0
         apikey =
@@ -125,7 +158,7 @@
         keep_archive = 1
         extract = 1
         nzbExtractionBy = Downloader
-        wait_for = 2
+        wait_for = 6
         # Set this to minimum required size to consider a media file valid (in MB)
         minSize = 0
         # Enable/Disable deleting ignored files (samples and invalid media files)
@@ -146,6 +179,7 @@
         ###### ADVANCED USE - ONLY EDIT IF YOU KNOW WHAT YOU'RE DOING ######
         ssl = 0
         web_root =
+        delete_failed = 0
         wait_for = 2
         # Enable/Disable linking for Torrents
         Torrent_NoLink = 0
@@ -156,6 +190,33 @@
         # Enable/Disable deleting ignored files (samples and invalid media files)
         delete_ignored = 0
         ##### Enable if HeadPhones is on a remote server for this category
+        remote_path = 0
+        ##### Set to path where download client places completed downloads locally for this category
+        watch_dir =
+
+[Lidarr]
+    #### autoProcessing for Movies
+    #### raCategory - category that gets called for post-processing with Radarr
+    [[music]]
+        enabled = 0
+        apikey =
+        host = localhost
+        port = 8686
+        ###### ADVANCED USE - ONLY EDIT IF YOU KNOW WHAT YOU'RE DOING ######
+        web_root =
+        ssl = 0
+        delete_failed = 0
+        # Enable/Disable linking for Torrents
+        Torrent_NoLink = 0
+        keep_archive = 1
+        extract = 1
+        nzbExtractionBy = Downloader
+        wait_for = 6
+        # Set this to minimum required size to consider a media file valid (in MB)
+        minSize = 0
+        # Enable/Disable deleting ignored files (samples and invalid media files)
+        delete_ignored = 0
+        ##### Enable if NzbDrone is on a remote server for this category
         remote_path = 0
         ##### Set to path where download client places completed downloads locally for this category
         watch_dir =
@@ -219,7 +280,7 @@
 [Nzb]
     ###### clientAgent - Supported clients: sabnzbd, nzbget
     clientAgent = sabnzbd
-    ###### SabNZBD (You must edit this if your using nzbToMedia.py with SabNZBD)
+    ###### SabNZBD (You must edit this if you're using nzbToMedia.py with SabNZBD)
     sabnzbd_host = http://localhost
     sabnzbd_port = 8080
     sabnzbd_apikey =
@@ -227,7 +288,7 @@
     default_downloadDirectory =
 
 [Torrent]
-    ###### clientAgent - Supported clients: utorrent, transmission, deluge, rtorrent, vuze, other
+    ###### clientAgent - Supported clients: utorrent, transmission, deluge, rtorrent, vuze, qbittorrent, other
     clientAgent = other
     ###### useLink - Set to hard for physical links, sym for symbolic links, move to move, move-sym to move and link back, and no to not use links (copy)
     useLink = hard
@@ -239,20 +300,25 @@
     categories = music_videos,pictures,software,manual
     ###### A list of categories that you don't want to be flattened (i.e preserve the directory structure when copying/linking.
     noFlatten = pictures,manual
-    ###### uTorrent Hardlink solution (You must edit this if your using TorrentToMedia.py with uTorrent)
+    ###### uTorrent Hardlink solution (You must edit this if you're using TorrentToMedia.py with uTorrent)
     uTorrentWEBui = http://localhost:8090/gui/
     uTorrentUSR = your username
     uTorrentPWD = your password
-    ###### Transmission (You must edit this if your using TorrentToMedia.py with Transmission)
+    ###### Transmission (You must edit this if you're using TorrentToMedia.py with Transmission)
     TransmissionHost = localhost
     TransmissionPort = 9091
     TransmissionUSR = your username
     TransmissionPWD = your password
-    #### Deluge (You must edit this if your using TorrentToMedia.py with deluge. Note that the host/port is for the deluge daemon, not the webui)
+    #### Deluge (You must edit this if you're using TorrentToMedia.py with deluge. Note that the host/port is for the deluge daemon, not the webui)
     DelugeHost = localhost
     DelugePort = 58846
     DelugeUSR = your username
     DelugePWD = your password
+    ###### qBittorrent (You must edit this if you're using TorrentToMedia.py with qBittorrent)
+    qBittorrenHost = localhost
+    qBittorrentPort = 8080
+    qBittorrentUSR = your username
+    qBittorrentPWD = your password
     ###### ADVANCED USE - ONLY EDIT IF YOU KNOW WHAT YOU'RE DOING ######
     deleteOriginal = 0
     chmodDirectory = 0

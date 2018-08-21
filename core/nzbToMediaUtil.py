@@ -23,10 +23,16 @@ from core.linktastic import linktastic
 from core.synchronousdeluge.client import DelugeClient
 from core.utorrent.client import UTorrentClient
 from core.transmissionrpc.client import Client as TransmissionClient
+from core.qbittorrent.client import Client as qBittorrentClient
 from core import logger, nzbToMediaDB
 
 requests.packages.urllib3.disable_warnings()
 
+# Monkey Patch shutil.copyfileobj() to adjust the buffer length to 512KB rather than 4KB
+shutil.copyfileobjOrig = shutil.copyfileobj
+def copyfileobjFast(fsrc, fdst, length=512*1024):
+    shutil.copyfileobjOrig(fsrc, fdst, length=length)
+shutil.copyfileobj = copyfileobjFast
 
 def reportNzb(failure_link, clientAgent):
     # Contact indexer site
@@ -195,7 +201,7 @@ def getDirSize(inputPath):
     from functools import partial
     prepend = partial(os.path.join, inputPath)
     return sum(
-        [(os.path.getsize(f) if os.path.isfile(f) else getDirSize(f)) for f in map(prepend, os.listdir(inputPath))])
+        [(os.path.getsize(f) if os.path.isfile(f) else getDirSize(f)) for f in map(prepend, os.listdir(unicode(inputPath)))])
 
 
 def is_minSize(inputName, minSize):
@@ -322,7 +328,7 @@ def removeEmptyFolders(path, removeRoot=True):
 
     # remove empty subfolders
     logger.debug("Checking for empty folders in:{0}".format(path))
-    files = os.listdir(path)
+    files = os.listdir(unicode(path))
     if len(files):
         for f in files:
             fullpath = os.path.join(path, f)
@@ -330,7 +336,7 @@ def removeEmptyFolders(path, removeRoot=True):
                 removeEmptyFolders(fullpath)
 
     # if folder empty, delete it
-    files = os.listdir(path)
+    files = os.listdir(unicode(path))
     if len(files) == 0 and removeRoot:
         logger.debug("Removing empty folder:{}".format(path))
         os.rmdir(path)
@@ -583,6 +589,34 @@ def parse_vuze(args):
 
     return inputDirectory, inputName, inputCategory, inputHash, inputID
 
+def parse_qbittorrent(args):
+    # qbittorrent usage: C:\full\path\to\nzbToMedia\TorrentToMedia.py "%D|%N|%L|%I"
+    try:
+        input = args[1].split('|')
+    except:
+        input = []
+    try:
+        inputDirectory = os.path.normpath(input[0].replace('"',''))
+    except:
+        inputDirectory = ''
+    try:
+        inputName = input[1].replace('"','')
+    except:
+        inputName = ''
+    try:
+        inputCategory = input[2].replace('"','')
+    except:
+        inputCategory = ''
+    try:
+        inputHash = input[3].replace('"','')
+    except:
+        inputHash = ''
+    try:
+        inputID = input[3].replace('"','')
+    except:
+        inputID = ''
+
+    return inputDirectory, inputName, inputCategory, inputHash, inputID
 
 def parse_args(clientAgent, args):
     clients = {
@@ -591,6 +625,7 @@ def parse_args(clientAgent, args):
         'utorrent': parse_utorrent,
         'deluge': parse_deluge,
         'transmission': parse_transmission,
+        'qbittorrent': parse_qbittorrent,
         'vuze': parse_vuze,
     }
 
@@ -607,9 +642,9 @@ def getDirs(section, subsection, link='hard'):
         folders = []
 
         logger.info("Searching {0} for mediafiles to post-process ...".format(path))
-        sync = [o for o in os.listdir(path) if os.path.splitext(o)[1] in ['.!sync', '.bts']]
+        sync = [o for o in os.listdir(unicode(path)) if os.path.splitext(o)[1] in ['.!sync', '.bts']]
         # search for single files and move them into their own folder for post-processing
-        for mediafile in [os.path.join(path, o) for o in os.listdir(path) if
+        for mediafile in [os.path.join(path, o) for o in os.listdir(unicode(path)) if
                           os.path.isfile(os.path.join(path, o))]:
             if len(sync) > 0:
                 break
@@ -673,11 +708,11 @@ def getDirs(section, subsection, link='hard'):
 
         # removeEmptyFolders(path, removeRoot=False)
 
-        if os.listdir(path):
-            for dir in [os.path.join(path, o) for o in os.listdir(path) if
+        if os.listdir(unicode(path)):
+            for dir in [os.path.join(path, o) for o in os.listdir(unicode(path)) if
                         os.path.isdir(os.path.join(path, o))]:
-                sync = [o for o in os.listdir(dir) if os.path.splitext(o)[1] in ['.!sync', '.bts']]
-                if len(sync) > 0 or len(os.listdir(dir)) == 0:
+                sync = [o for o in os.listdir(unicode(dir)) if os.path.splitext(o)[1] in ['.!sync', '.bts']]
+                if len(sync) > 0 or len(os.listdir(unicode(dir))) == 0:
                     continue
                 folders.extend([dir])
         return folders
@@ -728,7 +763,7 @@ def onerror(func, path, exc_info):
 def rmDir(dirName):
     logger.info("Deleting {0}".format(dirName))
     try:
-        shutil.rmtree(dirName, onerror=onerror)
+        shutil.rmtree(unicode(dirName), onerror=onerror)
     except:
         logger.error("Unable to delete folder {0}".format(dirName))
 
@@ -791,6 +826,14 @@ def create_torrent_class(clientAgent):
         except:
             logger.error("Failed to connect to Deluge")
 
+    if clientAgent == 'qbittorrent':
+        try:
+            logger.debug("Connecting to {0}: http://{1}:{2}".format(clientAgent, core.QBITTORRENTHOST, core.QBITTORRENTPORT))
+            tc = qBittorrentClient("http://{0}:{1}/".format(core.QBITTORRENTHOST, core.QBITTORRENTPORT))
+            tc.login(core.QBITTORRENTUSR, core.QBITTORRENTPWD)
+        except:
+            logger.error("Failed to connect to qBittorrent")
+
     return tc
 
 
@@ -803,6 +846,8 @@ def pause_torrent(clientAgent, inputHash, inputID, inputName):
             core.TORRENT_CLASS.stop_torrent(inputID)
         if clientAgent == 'deluge' and core.TORRENT_CLASS != "":
             core.TORRENT_CLASS.core.pause_torrent([inputID])
+        if clientAgent == 'qbittorrent' and core.TORRENT_CLASS != "":
+            core.TORRENT_CLASS.pause(inputHash)
         time.sleep(5)
     except:
         logger.warning("Failed to stop torrent {0} in {1}".format(inputName, clientAgent))
@@ -819,6 +864,8 @@ def resume_torrent(clientAgent, inputHash, inputID, inputName):
             core.TORRENT_CLASS.start_torrent(inputID)
         if clientAgent == 'deluge' and core.TORRENT_CLASS != "":
             core.TORRENT_CLASS.core.resume_torrent([inputID])
+        if clientAgent == 'qbittorrent' and core.TORRENT_CLASS != "":
+            core.TORRENT_CLASS.resume(inputHash)
         time.sleep(5)
     except:
         logger.warning("Failed to start torrent {0} in {1}".format(inputName, clientAgent))
@@ -835,6 +882,8 @@ def remove_torrent(clientAgent, inputHash, inputID, inputName):
                 core.TORRENT_CLASS.remove_torrent(inputID, True)
             if clientAgent == 'deluge' and core.TORRENT_CLASS != "":
                 core.TORRENT_CLASS.core.remove_torrent(inputID, True)
+            if clientAgent == 'qbittorrent' and core.TORRENT_CLASS != "":
+                core.TORRENT_CLASS.delete(inputHash)
             time.sleep(5)
         except:
             logger.warning("Failed to delete torrent {0} in {1}".format(inputName, clientAgent))
@@ -857,6 +906,11 @@ def find_download(clientAgent, download_id):
                 return True
     if clientAgent == 'deluge':
         return False
+    if clientAgent == 'qbittorrent':
+        torrents = core.TORRENT_CLASS.torrents()
+        for torrent in torrents:
+            if torrent['hash'] == download_id:
+                return True
     if clientAgent == 'sabnzbd':
         if "http" in core.SABNZBDHOST:
             baseURL = "{0}:{1}/api".format(core.SABNZBDHOST, core.SABNZBDPORT)
@@ -955,7 +1009,7 @@ def is_archive_file(filename):
     return False
 
 
-def isMediaFile(mediafile, media=True, audio=True, meta=True, archives=True):
+def isMediaFile(mediafile, media=True, audio=True, meta=True, archives=True, other=False, otherext=[]):
     fileName, fileExt = os.path.splitext(mediafile)
 
     try:
@@ -964,22 +1018,22 @@ def isMediaFile(mediafile, media=True, audio=True, meta=True, archives=True):
             return False
     except:
         pass
-
     if (media and fileExt.lower() in core.MEDIACONTAINER) \
             or (audio and fileExt.lower() in core.AUDIOCONTAINER) \
             or (meta and fileExt.lower() in core.METACONTAINER) \
-            or (archives and is_archive_file(mediafile)):
+            or (archives and is_archive_file(mediafile)) \
+            or (other and (fileExt.lower() in otherext or 'all' in otherext)):
         return True
     else:
         return False
 
 
-def listMediaFiles(path, minSize=0, delete_ignored=0, media=True, audio=True, meta=True, archives=True):
+def listMediaFiles(path, minSize=0, delete_ignored=0, media=True, audio=True, meta=True, archives=True, other=False, otherext=[]):
     files = []
     if not os.path.isdir(path):
         if os.path.isfile(path):  # Single file downloads.
             curFile = os.path.split(path)[1]
-            if isMediaFile(curFile, media, audio, meta, archives):
+            if isMediaFile(curFile, media, audio, meta, archives, other, otherext):
                 # Optionally ignore sample files
                 if is_sample(path) or not is_minSize(path, minSize):
                     if delete_ignored == 1:
@@ -994,14 +1048,14 @@ def listMediaFiles(path, minSize=0, delete_ignored=0, media=True, audio=True, me
 
         return files
 
-    for curFile in os.listdir(path):
+    for curFile in os.listdir(unicode(path)):
         fullCurFile = os.path.join(path, curFile)
 
         # if it's a folder do it recursively
         if os.path.isdir(fullCurFile) and not curFile.startswith('.'):
-            files += listMediaFiles(fullCurFile, minSize, delete_ignored, media, audio, meta, archives)
+            files += listMediaFiles(fullCurFile, minSize, delete_ignored, media, audio, meta, archives, other, otherext)
 
-        elif isMediaFile(curFile, media, audio, meta, archives):
+        elif isMediaFile(curFile, media, audio, meta, archives, other, otherext):
             # Optionally ignore sample files
             if is_sample(fullCurFile) or not is_minSize(fullCurFile, minSize):
                 if delete_ignored == 1:
@@ -1018,7 +1072,7 @@ def listMediaFiles(path, minSize=0, delete_ignored=0, media=True, audio=True, me
     return sorted(files, key=len)
 
 
-def find_imdbid(dirName, inputName):
+def find_imdbid(dirName, inputName, omdbApiKey):
     imdbid = None
 
     logger.info('Attemping imdbID lookup for {0}'.format(inputName))
@@ -1031,7 +1085,7 @@ def find_imdbid(dirName, inputName):
         logger.info("Found imdbID [{0}]".format(imdbid))
         return imdbid
     if os.path.isdir(dirName):
-        for file in os.listdir(dirName):
+        for file in os.listdir(unicode(dirName)):
             m = re.search('(tt\d{7})', file)
             if m:
                 imdbid = m.group(1)
@@ -1047,7 +1101,10 @@ def find_imdbid(dirName, inputName):
                 logger.info("Found imdbID [{0}] from DNZB-MoreInfo".format(imdbid))
                 return imdbid
     logger.info('Searching IMDB for imdbID ...')
-    guess = guessit.guessit(inputName)
+    try:
+        guess = guessit.guessit(inputName)
+    except:
+        guess = None
     if guess:
         # Movie Title
         title = None
@@ -1063,18 +1120,24 @@ def find_imdbid(dirName, inputName):
 
         logger.debug("Opening URL: {0}".format(url))
 
+        if not omdbApiKey:
+            return
         try:
-            r = requests.get(url, params={'y': year, 't': title}, verify=False, timeout=(60, 300))
+            r = requests.get(url, params={'apikey': omdbApiKey, 'y': year, 't': title},
+            verify=False, timeout=(60, 300))
         except requests.ConnectionError:
             logger.error("Unable to open URL {0}".format(url))
             return
 
-        results = r.json()
+        try:
+            results = r.json()
+        except:
+            logger.error("No json data returned from omdbapi.com")
 
         try:
             imdbid = results['imdbID']
         except:
-            pass
+            logger.error("No imdbID returned from omdbapi.com")
 
         if imdbid:
             logger.info("Found imdbID [{0}]".format(imdbid))
@@ -1099,7 +1162,7 @@ def extractFiles(src, dst=None, keep_archive=None):
 
         try:
             if extractor.extract(inputFile, dst or dirPath):
-                extracted_folder.append(dst or dirPath)
+                extracted_folder.append(dirPath)
                 extracted_archive.append(archiveName)
         except Exception:
             logger.error("Extraction failed for: {0}".format(fullFileName))
@@ -1109,7 +1172,7 @@ def extractFiles(src, dst=None, keep_archive=None):
             fullFileName = os.path.basename(inputFile)
             archiveName = os.path.splitext(fullFileName)[0]
             archiveName = re.sub(r"part[0-9]+", "", archiveName)
-            if archiveName not in extracted_archive or keep_archive is True:
+            if archiveName not in extracted_archive or keep_archive:
                 continue  # don't remove if we haven't extracted this archive, or if we want to preserve them.
             logger.info("Removing extracted archive {0} from folder {1} ...".format(fullFileName, folder))
             try:
@@ -1138,7 +1201,7 @@ def import_subs(filename):
     if not languages:
         return
 
-    logger.debug("Attempting to download subtitles for {0}".format(filename), 'SUBTITLES')
+    logger.info("Attempting to download subtitles for {0}".format(filename), 'SUBTITLES')
     try:
         video = subliminal.scan_video(filename)
         subtitles = subliminal.download_best_subtitles({video}, languages)
