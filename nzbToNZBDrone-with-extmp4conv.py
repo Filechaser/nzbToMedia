@@ -18,8 +18,9 @@ def main():
     answer = checkandconvert()
     postprocessing = Subprocesslauncher(path_to_python,path_of_nzbtosickbeardpy,sys.argv[1:],terminalprefix='NZBTOSONARR    ')
     answerpostprocessing = postprocessing.launch()
-
-    return answerpostprocessing
-
+    
+    #old
+    #return answerpostprocessing
+    sys.exit(answerpostprocessing)
 if __name__ == '__main__':
     exit(main())
