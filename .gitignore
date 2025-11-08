@@ -1,8 +1,8 @@
 .DS_Store
 *.cfg
+!.bumpversion.cfg
 *.cfg.old
-*.pyc
-*.pyo
+*.py[cod]
 *.log
 *.pid
 *.db
@@ -10,3 +10,7 @@
 /userscripts/
 /logs/
 /.idea/
+/venv/
+*.dist-info
+*.egg-info
+/.vscode

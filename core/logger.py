@@ -1,11 +1,19 @@
 # coding=utf-8
-from __future__ import with_statement
 
+from __future__ import (
+    absolute_import,
+    division,
+    print_function,
+    unicode_literals,
+)
+
+import logging
 import os
 import sys
 import threading
-import logging
+
 import core
+import functools
 
 # number of log files to keep
 NUM_LOGS = 3
@@ -58,10 +66,10 @@ class NTMRotatingLogHandler(object):
             handler.flush()
             handler.close()
 
-    def initLogging(self, consoleLogging=True):
+    def init_logging(self, console_logging=True):
 
-        if consoleLogging:
-            self.console_logging = consoleLogging
+        if console_logging:
+            self.console_logging = console_logging
 
         old_handler = None
 
@@ -85,9 +93,9 @@ class NTMRotatingLogHandler(object):
                 console.setFormatter(DispatchingFormatter(
                     {'nzbtomedia': logging.Formatter('[%(asctime)s] [%(levelname)s]::%(message)s', '%H:%M:%S'),
                      'postprocess': logging.Formatter('[%(asctime)s] [%(levelname)s]::%(message)s', '%H:%M:%S'),
-                     'db': logging.Formatter('[%(asctime)s] [%(levelname)s]::%(message)s', '%H:%M:%S')
+                     'db': logging.Formatter('[%(asctime)s] [%(levelname)s]::%(message)s', '%H:%M:%S'),
                      },
-                    logging.Formatter('%(message)s'), ))
+                    logging.Formatter('%(message)s')))
 
                 # add the handler to the root logger
                 logging.getLogger('nzbtomedia').addHandler(console)
@@ -111,10 +119,7 @@ class NTMRotatingLogHandler(object):
             self.close_log(old_handler)
 
     def _config_handler(self):
-        """
-        Configure a file handler to log at file_name and return it.
-        """
-
+        """Configure a file handler to log at file_name and return it."""
         file_handler = logging.FileHandler(self.log_file_path, encoding='utf-8')
 
         file_handler.setLevel(DB)
@@ -122,29 +127,29 @@ class NTMRotatingLogHandler(object):
         file_handler.setFormatter(DispatchingFormatter(
             {'nzbtomedia': logging.Formatter('%(asctime)s %(levelname)-8s::%(message)s', '%Y-%m-%d %H:%M:%S'),
              'postprocess': logging.Formatter('%(asctime)s %(levelname)-8s::%(message)s', '%Y-%m-%d %H:%M:%S'),
-             'db': logging.Formatter('%(asctime)s %(levelname)-8s::%(message)s', '%Y-%m-%d %H:%M:%S')
+             'db': logging.Formatter('%(asctime)s %(levelname)-8s::%(message)s', '%Y-%m-%d %H:%M:%S'),
              },
-            logging.Formatter('%(message)s'), ))
+            logging.Formatter('%(message)s')))
 
         return file_handler
 
     def _log_file_name(self, i):
         """
-        Returns a numbered log file name depending on i. If i==0 it just uses logName, if not it appends
-        it to the extension (blah.log.3 for i == 3)
-        
+        Return a numbered log file name depending on i.
+
+        If i==0 it just uses logName, if not it appends it to the extension
+        e.g. (blah.log.3 for i == 3)
+
         i: Log number to ues
         """
-
         return self.log_file_path + ('.{0}'.format(i) if i else '')
 
     def _num_logs(self):
         """
-        Scans the log folder and figures out how many log files there are already on disk
+        Scan the log folder and figure out how many log files there are already on disk.
 
         Returns: The number of the last used file (eg. mylog.log.3 would return 3). If there are no logs it returns -1
         """
-
         cur_log = 0
         while os.path.isfile(self._log_file_name(cur_log)):
             cur_log += 1
@@ -180,7 +185,7 @@ class NTMRotatingLogHandler(object):
         pp_logger.addHandler(new_file_handler)
         db_logger.addHandler(new_file_handler)
 
-    def log(self, toLog, logLevel=MESSAGE, section='MAIN'):
+    def log(self, to_log, log_level=MESSAGE, section='MAIN'):
 
         with self.log_lock:
 
@@ -193,35 +198,34 @@ class NTMRotatingLogHandler(object):
                 self.writes_since_check += 1
 
             try:
-                message = u"{0}: {1}".format(section.upper(), toLog)
+                message = u'{0}: {1}'.format(section.upper(), to_log)
             except UnicodeError:
-                message = u"{0}: Message contains non-utf-8 string".format(section.upper())
+                message = u'{0}: Message contains non-utf-8 string'.format(section.upper())
 
             out_line = message
 
             ntm_logger = logging.getLogger('nzbtomedia')
             pp_logger = logging.getLogger('postprocess')
             db_logger = logging.getLogger('db')
-            setattr(pp_logger, 'postprocess', lambda *args: pp_logger.log(POSTPROCESS, *args))
-            setattr(db_logger, 'db', lambda *args: db_logger.log(DB, *args))
-
+            pp_logger.postprocess = functools.partial(pp_logger.log, POSTPROCESS)
+            db_logger.db = functools.partial(db_logger.log, DB)
             try:
-                if logLevel == DEBUG:
+                if log_level == DEBUG:
                     if core.LOG_DEBUG == 1:
                         ntm_logger.debug(out_line)
-                elif logLevel == MESSAGE:
+                elif log_level == MESSAGE:
                     ntm_logger.info(out_line)
-                elif logLevel == WARNING:
+                elif log_level == WARNING:
                     ntm_logger.warning(out_line)
-                elif logLevel == ERROR:
+                elif log_level == ERROR:
                     ntm_logger.error(out_line)
-                elif logLevel == POSTPROCESS:
+                elif log_level == POSTPROCESS:
                     pp_logger.postprocess(out_line)
-                elif logLevel == DB:
+                elif log_level == DB:
                     if core.LOG_DB == 1:
                         db_logger.db(out_line)
                 else:
-                    ntm_logger.info(logLevel, out_line)
+                    ntm_logger.info(log_level, out_line)
             except ValueError:
                 pass
 
@@ -249,32 +253,32 @@ class DispatchingFormatter(object):
 ntm_log_instance = NTMRotatingLogHandler(core.LOG_FILE, NUM_LOGS, LOG_SIZE)
 
 
-def log(toLog, logLevel=MESSAGE, section='MAIN'):
-    ntm_log_instance.log(toLog, logLevel, section)
+def log(to_log, log_level=MESSAGE, section='MAIN'):
+    ntm_log_instance.log(to_log, log_level, section)
 
 
-def info(toLog, section='MAIN'):
-    log(toLog, MESSAGE, section)
+def info(to_log, section='MAIN'):
+    log(to_log, MESSAGE, section)
 
 
-def error(toLog, section='MAIN'):
-    log(toLog, ERROR, section)
+def error(to_log, section='MAIN'):
+    log(to_log, ERROR, section)
 
 
-def warning(toLog, section='MAIN'):
-    log(toLog, WARNING, section)
+def warning(to_log, section='MAIN'):
+    log(to_log, WARNING, section)
 
 
-def debug(toLog, section='MAIN'):
-    log(toLog, DEBUG, section)
+def debug(to_log, section='MAIN'):
+    log(to_log, DEBUG, section)
 
 
-def postprocess(toLog, section='POSTPROCESS'):
-    log(toLog, POSTPROCESS, section)
+def postprocess(to_log, section='POSTPROCESS'):
+    log(to_log, POSTPROCESS, section)
 
 
-def db(toLog, section='DB'):
-    log(toLog, DB, section)
+def db(to_log, section='DB'):
+    log(to_log, DB, section)
 
 
 def log_error_and_exit(error_msg):

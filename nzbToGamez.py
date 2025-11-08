@@ -1,10 +1,10 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # coding=utf-8
 #
 ##############################################################################
 ### NZBGET POST-PROCESSING SCRIPT                                          ###
 
-# Post-Process to CouchPotato, SickBeard, NzbDrone, Mylar, Gamez, HeadPhones.
+# Post-Process to Gamez.
 #
 # This script sends the download to your automated media management servers.
 #
@@ -68,8 +68,10 @@
 
 # Niceness for external tasks Extractor and Transcoder.
 #
-# Set the Niceness value for the nice command. These range from -20 (most favorable to the process) to 19 (least favorable to the process).
-#niceness=10
+# Set the Niceness value for the nice command. These range from -20 (most favorable to the process) to 19 (least favorable to the process). 
+# If entering an integer e.g 'niceness=4', this is added to the nice command and passed as 'nice -n4' (Default). 
+# If entering a comma separated list e.g. 'niceness=nice,4' this will be passed as 'nice 4' (Safer).
+#niceness=nice,-n0
 
 # ionice scheduling class (0, 1, 2, 3).
 #
@@ -100,9 +102,17 @@
 ### NZBGET POST-PROCESSING SCRIPT                                          ###
 ##############################################################################
 
+from __future__ import (
+    absolute_import,
+    division,
+    print_function,
+    unicode_literals,
+)
+
 import sys
+
 import nzbToMedia
 
-section = "Gamez"
+section = 'Gamez'
 result = nzbToMedia.main(sys.argv, section)
 sys.exit(result)
